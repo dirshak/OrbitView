@@ -1,0 +1,50 @@
+# Self-hosted AstroTrack — pulls prebuilt images from GHCR.
+# Quick start: docker compose -f docker-compose.prod.yml up -d
+# Optional: create a .env file to override any of the variables below.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-astrotrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astrotrack}
+      POSTGRES_DB: ${POSTGRES_DB:-astrotrack}
+    volumes:
+      - astrotrack-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-astrotrack}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/xops-labs/astrotrack-backend:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: astrotrack-api
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=astrotrack,deployment.environment=production
+      AstroTrack__Cors__AllowedOrigins__0: ${AstroTrack__Cors__AllowedOrigins__0:-http://localhost:8080}
+      AstroTrack__Cors__AllowedOrigins__1: ${AstroTrack__Cors__AllowedOrigins__1:-}
+      ConnectionStrings__Postgres: ${ConnectionStrings__Postgres:-Host=postgres;Database=astrotrack;Username=astrotrack;Password=astrotrack}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5080:8080"
+
+  frontend:
+    image: ghcr.io/xops-labs/astrotrack-frontend:latest
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  astrotrack-pg:

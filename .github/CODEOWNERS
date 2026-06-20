@@ -1,0 +1,25 @@
+# CODEOWNERS for AstroTrack
+#
+# These owners are automatically requested for review on PRs that touch matching paths.
+# The last matching pattern wins, so put more specific paths below more general ones.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo.
+*                                   @yasvanth511
+
+# Backend (.NET clean architecture) and frontend (React + Three.js)
+/backend/                           @yasvanth511
+/frontend/                          @yasvanth511
+
+# Deployment, compose, and Docker artifacts
+/deploy/                            @yasvanth511
+/docker-compose.yml                 @yasvanth511
+/docker-compose.prod.yml            @yasvanth511
+
+# Governance, security, and community documents
+/.github/                           @yasvanth511
+/CODE_OF_CONDUCT.md                 @yasvanth511
+/CONTRIBUTING.md                    @yasvanth511
+/SECURITY.md                        @yasvanth511
+/LICENSE                            @yasvanth511

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\AstroTrack.Domain\AstroTrack.Domain.csproj" />
+  </ItemGroup>
+</Project>

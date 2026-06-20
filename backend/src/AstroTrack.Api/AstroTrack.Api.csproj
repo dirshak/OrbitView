@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.7.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AstroTrack.Application\AstroTrack.Application.csproj" />
+    <ProjectReference Include="..\AstroTrack.Domain\AstroTrack.Domain.csproj" />
+    <ProjectReference Include="..\AstroTrack.Infrastructure\AstroTrack.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

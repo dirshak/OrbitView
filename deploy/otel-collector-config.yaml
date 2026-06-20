@@ -1,0 +1,32 @@
+# OpenTelemetry Collector — minimal self-host config for AstroTrack.
+# Used when running: docker compose --profile observability up
+# The collector receives traces and metrics from the backend and logs them locally.
+# To ship to an external backend, add an exporter below and reference it in the pipelines.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # Uncomment to scrape metrics via Prometheus on port 8889.
+  # prometheus:
+  #   endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

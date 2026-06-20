@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-astrotrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astrotrack}
+      POSTGRES_DB: ${POSTGRES_DB:-astrotrack}
+    ports:
+      - "5432:5432"
+    volumes:
+      - astrotrack-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-astrotrack}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Reserved for future position caching; uncomment when caching lands.
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      # To enable telemetry, run: docker compose --profile observability up
+      # and set OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 in your .env file.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: astrotrack-api
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=astrotrack,deployment.environment=local
+      AstroTrack__Cors__AllowedOrigins__0: ${AstroTrack__Cors__AllowedOrigins__0:-http://localhost:8080}
+      AstroTrack__Cors__AllowedOrigins__1: ${AstroTrack__Cors__AllowedOrigins__1:-http://localhost:5173}
+      ConnectionStrings__Postgres: ${ConnectionStrings__Postgres:-Host=postgres;Database=astrotrack;Username=astrotrack;Password=astrotrack}
+      # Reserved for future position caching; uncomment when caching lands.
+      # ConnectionStrings__Redis: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Reserved for future position caching; uncomment when caching lands.
+      # redis:
+      #   condition: service_healthy
+    ports:
+      - "5080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+  # Optional observability stack — only started when you run:
+  #   docker compose --profile observability up
+  # Set OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 in your .env to enable telemetry export.
+  otel-collector:
+    profiles: ["observability"]
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+
+volumes:
+  astrotrack-pg:

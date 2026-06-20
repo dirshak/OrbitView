@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" font-family="'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="AstroTrack — 3D satellite and mission tracker with live SGP4 orbits">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1020"/>
+      <stop offset="0.55" stop-color="#070b16"/>
+      <stop offset="1" stop-color="#04060d"/>
+    </linearGradient>
+    <radialGradient id="atmo" cx="50%" cy="50%" r="50%">
+      <stop offset="0.70" stop-color="#1e90ff" stop-opacity="0"/>
+      <stop offset="0.90" stop-color="#36a0ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#36a0ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="globe" cx="38%" cy="34%" r="75%">
+      <stop offset="0" stop-color="#2f7de0"/>
+      <stop offset="0.45" stop-color="#1a55ad"/>
+      <stop offset="0.80" stop-color="#0c2a5e"/>
+      <stop offset="1" stop-color="#06122b"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7cdcff"/>
+      <stop offset="0.55" stop-color="#9aa8ff"/>
+      <stop offset="1" stop-color="#c89bff"/>
+    </linearGradient>
+    <filter id="glow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="globeClip"><circle cx="910" cy="200" r="140"/></clipPath>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="1200" height="400" fill="url(#bg)"/>
+
+  <!-- starfield -->
+  <g fill="#ffffff">
+    <circle cx="80" cy="60" r="1.2" opacity="0.7"><animate attributeName="opacity" values="0.2;0.9;0.2" dur="4s" repeatCount="indefinite"/></circle>
+    <circle cx="220" cy="330" r="1" opacity="0.5"><animate attributeName="opacity" values="0.6;0.15;0.6" dur="5s" repeatCount="indefinite"/></circle>
+    <circle cx="500" cy="90" r="1.3" opacity="0.6"><animate attributeName="opacity" values="0.2;0.8;0.2" dur="6s" repeatCount="indefinite"/></circle>
+    <circle cx="360" cy="200" r="0.9" opacity="0.5"/>
+    <circle cx="150" cy="250" r="1" opacity="0.4"/>
+    <circle cx="610" cy="330" r="1.1" opacity="0.5"><animate attributeName="opacity" values="0.6;0.2;0.6" dur="4.5s" repeatCount="indefinite"/></circle>
+    <circle cx="1140" cy="70" r="1.2" opacity="0.6"/>
+    <circle cx="1080" cy="330" r="1" opacity="0.5"><animate attributeName="opacity" values="0.2;0.7;0.2" dur="5.5s" repeatCount="indefinite"/></circle>
+    <circle cx="700" cy="40" r="0.9" opacity="0.4"/>
+    <circle cx="990" cy="360" r="0.9" opacity="0.4"/>
+  </g>
+
+  <!-- ===================== GLOBE ===================== -->
+  <circle cx="910" cy="200" r="172" fill="url(#atmo)"/>
+  <circle cx="910" cy="200" r="140" fill="url(#globe)"/>
+
+  <!-- graticule -->
+  <g clip-path="url(#globeClip)" fill="none" stroke="#7fd6ff" stroke-opacity="0.18" stroke-width="1">
+    <ellipse cx="910" cy="200" rx="140" ry="46"/>
+    <ellipse cx="910" cy="200" rx="140" ry="92"/>
+    <ellipse cx="910" cy="200" rx="46" ry="140"/>
+    <ellipse cx="910" cy="200" rx="92" ry="140"/>
+    <line x1="770" y1="200" x2="1050" y2="200"/>
+  </g>
+  <!-- night-side shading -->
+  <circle cx="910" cy="200" r="140" fill="#04060d" opacity="0.28" clip-path="url(#globeClip)" transform="translate(46,30)"/>
+  <circle cx="910" cy="200" r="140" fill="none" stroke="#8fd3ff" stroke-opacity="0.25" stroke-width="1.5"/>
+
+  <!-- ===================== ORBITS + SATELLITES ===================== -->
+  <!-- each group: faint ring + a satellite that travels the ring (SMIL); static viewers see the dot resting on its orbit -->
+  <g transform="rotate(-22 910 200)">
+    <path d="M700,200 A210,78 0 1 1 1120,200 A210,78 0 1 1 700,200 Z" fill="none" stroke="#5ce1ff" stroke-opacity="0.30" stroke-width="1.5"/>
+    <circle cx="700" cy="200" r="6" fill="#5ce1ff" filter="url(#glow)">
+      <animateMotion dur="9s" repeatCount="indefinite" path="m0,0 a210,78 0 1 1 420,0 a210,78 0 1 1 -420,0 z"/>
+    </circle>
+  </g>
+  <g transform="rotate(26 910 200)">
+    <path d="M730,200 A180,118 0 1 1 1090,200 A180,118 0 1 1 730,200 Z" fill="none" stroke="#ff7eb6" stroke-opacity="0.28" stroke-width="1.5"/>
+    <circle cx="730" cy="200" r="5.5" fill="#ff7eb6" filter="url(#glow)">
+      <animateMotion dur="12s" repeatCount="indefinite" path="m0,0 a180,118 0 1 1 360,0 a180,118 0 1 1 -360,0 z"/>
+    </circle>
+  </g>
+  <g transform="rotate(8 910 200)">
+    <path d="M680,200 A230,54 0 1 1 1140,200 A230,54 0 1 1 680,200 Z" fill="none" stroke="#bef264" stroke-opacity="0.40" stroke-width="1.7"/>
+    <!-- highlighted: student-built CubeSat -->
+    <circle cx="680" cy="200" r="6.5" fill="#bef264" filter="url(#glow)">
+      <animateMotion dur="7s" repeatCount="indefinite" path="m0,0 a230,54 0 1 1 460,0 a230,54 0 1 1 -460,0 z"/>
+    </circle>
+  </g>
+  <g transform="rotate(0 910 200)">
+    <path d="M768,200 A142,142 0 1 1 1052,200 A142,142 0 1 1 768,200 Z" fill="none" stroke="#ffb547" stroke-opacity="0.30" stroke-width="1.5"/>
+    <circle cx="768" cy="200" r="6" fill="#ffb547" filter="url(#glow)">
+      <animateMotion dur="10s" repeatCount="indefinite" path="m0,0 a142,142 0 1 1 284,0 a142,142 0 1 1 -284,0 z"/>
+    </circle>
+  </g>
+
+  <!-- ===================== WORDMARK ===================== -->
+  <text x="64" y="150" font-size="74" font-weight="700" fill="url(#title)" letter-spacing="-1">AstroTrack</text>
+  <text x="66" y="190" font-size="21" font-weight="600" fill="#cdd8f0">3D Satellite &amp; Mission Tracker</text>
+  <text x="66" y="220" font-size="15.5" fill="#8b9bbd">Live SGP4 orbits · NASA missions · pass prediction · self-hosted</text>
+  <text x="66" y="246" font-size="13.5" fill="#6f7fa3" font-style="italic">Built for students &amp; student-built satellites — CubeSats included</text>
+
+  <!-- category legend -->
+  <g font-size="12.5" fill="#c2cee6">
+    <g transform="translate(66,286)"><circle cx="0" cy="-4" r="5" fill="#ffb547"/><text x="12" y="0">ISS / Stations</text></g>
+    <g transform="translate(196,286)"><circle cx="0" cy="-4" r="5" fill="#5ce1ff"/><text x="12" y="0">Earth obs.</text></g>
+    <g transform="translate(306,286)"><circle cx="0" cy="-4" r="5" fill="#6affc6"/><text x="12" y="0">Weather</text></g>
+    <g transform="translate(66,314)"><circle cx="0" cy="-4" r="5" fill="#ff7eb6"/><text x="12" y="0">Comms</text></g>
+    <g transform="translate(156,314)"><circle cx="0" cy="-4" r="5" fill="#b888ff"/><text x="12" y="0">Science</text></g>
+    <g transform="translate(246,314)"><circle cx="0" cy="-4" r="5" fill="#ffd166"/><text x="12" y="0">Navigation</text></g>
+    <g transform="translate(360,314)"><circle cx="0" cy="-4" r="5" fill="#bef264"/><text x="12" y="0" font-weight="600" fill="#dfffb0">CubeSats / Student</text></g>
+  </g>
+
+  <!-- tech footer chips -->
+  <g font-size="12" fill="#9fb0d0">
+    <g transform="translate(66,356)">
+      <rect x="0" y="-14" width="64" height="22" rx="11" fill="#11192e" stroke="#22304f"/><text x="32" y="1" text-anchor="middle">.NET 8</text>
+    </g>
+    <g transform="translate(138,356)">
+      <rect x="0" y="-14" width="92" height="22" rx="11" fill="#11192e" stroke="#22304f"/><text x="46" y="1" text-anchor="middle">React · Three.js</text>
+    </g>
+    <g transform="translate(238,356)">
+      <rect x="0" y="-14" width="58" height="22" rx="11" fill="#11192e" stroke="#22304f"/><text x="29" y="1" text-anchor="middle">CelesTrak</text>
+    </g>
+    <g transform="translate(304,356)">
+      <rect x="0" y="-14" width="86" height="22" rx="11" fill="#11192e" stroke="#22304f"/><text x="43" y="1" text-anchor="middle">Docker Compose</text>
+    </g>
+  </g>
+</svg>

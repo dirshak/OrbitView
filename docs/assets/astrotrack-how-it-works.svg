@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" font-family="'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="AstroTrack data pipeline: CelesTrak TLEs, SGP4 propagation, .NET 8 API, 3D WebGL globe, pass prediction, iCalendar export">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1020"/>
+      <stop offset="1" stop-color="#05080f"/>
+    </linearGradient>
+    <style>
+      .t   { fill:#e7eefc; font-size:15px; font-weight:600; }
+      .s   { fill:#8b9bbd; font-size:11.5px; }
+      .box { fill:#0f1830; stroke:#22304f; stroke-width:1.2; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="230" rx="14" fill="url(#bg2)"/>
+
+  <text x="32" y="38" fill="#cdd8f0" font-size="17" font-weight="700">How AstroTrack works</text>
+  <text x="32" y="58" class="s">Public orbital data in → an interactive, predictable sky out. Every satellite flows through the same six stages.</text>
+
+  <!-- connectors -->
+  <g stroke="#445" stroke-width="2" marker-end="url(#arrow)">
+    <line x1="201" y1="135" x2="231" y2="135"/>
+    <line x1="396" y1="135" x2="426" y2="135"/>
+    <line x1="591" y1="135" x2="621" y2="135"/>
+    <line x1="786" y1="135" x2="816" y2="135"/>
+    <line x1="981" y1="135" x2="1011" y2="135"/>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#6b7da0"/>
+    </marker>
+  </defs>
+
+  <!-- stage 1 -->
+  <g transform="translate(36,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#5ce1ff"/>
+    <circle cx="22" cy="34" r="9" fill="#5ce1ff" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#5ce1ff"/>
+    <text x="40" y="39" class="t">CelesTrak</text>
+    <text x="16" y="64" class="s">Public TLE feeds —</text>
+    <text x="16" y="80" class="s">incl. CubeSats &amp; amateur</text>
+  </g>
+  <!-- stage 2 -->
+  <g transform="translate(231,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#b888ff"/>
+    <circle cx="22" cy="34" r="9" fill="#b888ff" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#b888ff"/>
+    <text x="40" y="39" class="t">SGP4</text>
+    <text x="16" y="64" class="s">Standard model turns</text>
+    <text x="16" y="80" class="s">a TLE into a position</text>
+  </g>
+  <!-- stage 3 -->
+  <g transform="translate(426,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#ffb547"/>
+    <circle cx="22" cy="34" r="9" fill="#ffb547" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#ffb547"/>
+    <text x="40" y="39" class="t">.NET 8 API</text>
+    <text x="16" y="64" class="s">Serves the catalog,</text>
+    <text x="16" y="80" class="s">positions &amp; passes</text>
+  </g>
+  <!-- stage 4 -->
+  <g transform="translate(621,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#6affc6"/>
+    <circle cx="22" cy="34" r="9" fill="#6affc6" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#6affc6"/>
+    <text x="40" y="39" class="t">3D Globe</text>
+    <text x="16" y="64" class="s">WebGL Earth, live dots</text>
+    <text x="16" y="80" class="s">&amp; orbit trails @ 60fps</text>
+  </g>
+  <!-- stage 5 -->
+  <g transform="translate(816,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#ff7eb6"/>
+    <circle cx="22" cy="34" r="9" fill="#ff7eb6" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#ff7eb6"/>
+    <text x="40" y="39" class="t">Passes</text>
+    <text x="16" y="64" class="s">Next visible passes</text>
+    <text x="16" y="80" class="s">from your location</text>
+  </g>
+  <!-- stage 6 -->
+  <g transform="translate(1011,88)">
+    <rect class="box" width="165" height="94" rx="12"/>
+    <rect width="165" height="4" rx="2" fill="#bef264"/>
+    <circle cx="22" cy="34" r="9" fill="#bef264" opacity="0.18"/><circle cx="22" cy="34" r="4" fill="#bef264"/>
+    <text x="40" y="39" class="t">.ics export</text>
+    <text x="16" y="64" class="s">Add a pass straight</text>
+    <text x="16" y="80" class="s">to your calendar</text>
+  </g>
+</svg>
