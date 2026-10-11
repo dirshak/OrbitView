@@ -5,6 +5,9 @@ import { CategoryFilter } from "./components/CategoryFilter";
 import { SatelliteList } from "./components/SatelliteList";
 import { SatelliteDetailPanel } from "./components/SatelliteDetailPanel";
 import { MissionExplorer } from "./components/MissionExplorer";
+import { AssistantPanel } from "./components/AssistantPanel";
+import { ReentryWatch } from "./components/ReentryWatch";
+import { HealthDashboard } from "./components/HealthDashboard";
 import { loadCatalog } from "./lib/api";
 import { useUiStore } from "./store/satellites";
 import type { SatelliteRecord } from "./types/satellite";
@@ -24,7 +27,9 @@ export default function App() {
   const showOrbitTrail = useUiStore((s) => s.showOrbitTrail);
   const setShowOrbitTrail = useUiStore((s) => s.setShowOrbitTrail);
 
-  const [showMissions, setShowMissions] = useState(false);
+  // Left-side overlays share one slot.
+  const [overlay, setOverlay] = useState<"missions" | "assistant" | "reentry" | "health" | null>(null);
+  const toggleOverlay = (o: NonNullable<typeof overlay>) => setOverlay((cur) => (cur === o ? null : o));
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   const counts = useMemo(() => {
@@ -65,7 +70,7 @@ export default function App() {
           <Logo />
           <div>
             <div className="text-sm font-semibold tracking-wide text-white">
-              AstroTrack
+              OrbitView
             </div>
             <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300/70">
               3D Satellite & Mission Tracker
@@ -73,13 +78,18 @@ export default function App() {
           </div>
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowMissions((v) => !v)}
-            className="rounded-md border border-white/10 bg-space-900/70 px-3 py-1.5 text-xs text-slate-100 hover:border-cyan-300/40 hover:text-cyan-100"
-          >
+          <HeaderButton active={overlay === "assistant"} onClick={() => toggleOverlay("assistant")} accent>
+            ✦ Ask OrbitView
+          </HeaderButton>
+          <HeaderButton active={overlay === "reentry"} onClick={() => toggleOverlay("reentry")}>
+            Re-entry Watch
+          </HeaderButton>
+          <HeaderButton active={overlay === "health"} onClick={() => toggleOverlay("health")}>
+            Spacecraft Health
+          </HeaderButton>
+          <HeaderButton active={overlay === "missions"} onClick={() => toggleOverlay("missions")}>
             NASA Missions
-          </button>
+          </HeaderButton>
           <a
             href="https://celestrak.org"
             target="_blank"
@@ -92,7 +102,7 @@ export default function App() {
       </header>
 
       {/* Left search/filter panel */}
-      <aside className="panel pointer-events-auto absolute left-3 top-20 z-10 w-[320px] max-w-[calc(100vw-1.5rem)] flex flex-col max-h-[calc(100vh-6rem)]">
+      <aside className="panel pointer-events-auto absolute left-3 top-20 z-10 w-[320px] max-w-[calc(100vw-1.5rem)] flex flex-col max-h-[calc(100vh-7.5rem)]">
         <div className="border-b border-white/5 px-4 py-3 space-y-2">
           <input
             type="search"
@@ -146,16 +156,97 @@ export default function App() {
       {/* Detail panel — mounted only when a satellite is selected */}
       <SatelliteDetailPanel satellite={selected} onClose={() => select(null)} />
 
-      {/* Mission Explorer — toggled */}
-      {showMissions && <MissionExplorer onClose={() => setShowMissions(false)} />}
+      {/* Left overlays — toggled from the header */}
+      {overlay === "missions" && <MissionExplorer onClose={() => setOverlay(null)} />}
+      {overlay === "assistant" && <AssistantPanel onClose={() => setOverlay(null)} />}
+      {overlay === "reentry" && <ReentryWatch onClose={() => setOverlay(null)} />}
+      {overlay === "health" && <HealthDashboard onClose={() => setOverlay(null)} />}
+
+      <GlobeControls />
 
       {/* Footer note */}
       <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-center justify-between px-4 py-2 text-[10px] text-slate-500">
         <span>
-          Drag to rotate · Scroll to zoom · Click a marker to view satellite details
+          Drag to rotate (or move, in Move mode) · Scroll to zoom · Click a marker to view satellite details
         </span>
         <span>TLE via CelesTrak · SGP4 propagation in browser</span>
       </footer>
+    </div>
+  );
+}
+
+function HeaderButton({
+  active,
+  accent = false,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  accent?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const tone = active
+    ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100"
+    : accent
+      ? "border-cyan-300/30 bg-space-900/70 text-cyan-100 hover:border-cyan-300/60"
+      : "border-white/10 bg-space-900/70 text-slate-100 hover:border-cyan-300/40 hover:text-cyan-100";
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`whitespace-nowrap rounded-md border px-3 py-1.5 text-xs ${tone}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GlobeControls() {
+  const autoRotate = useUiStore((s) => s.autoRotate);
+  const setAutoRotate = useUiStore((s) => s.setAutoRotate);
+  const panMode = useUiStore((s) => s.panMode);
+  const setPanMode = useUiStore((s) => s.setPanMode);
+  const resetView = useUiStore((s) => s.resetView);
+
+  const base =
+    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs transition-colors";
+  const idle =
+    "border-white/10 bg-space-900/80 text-slate-100 hover:border-cyan-300/40 hover:text-cyan-100";
+  const active = "border-cyan-300/60 bg-cyan-300/15 text-cyan-100";
+
+  return (
+    <div className="pointer-events-auto absolute bottom-9 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-white/5 bg-space-950/60 p-1.5 backdrop-blur-md">
+      <button
+        type="button"
+        aria-pressed={!autoRotate}
+        onClick={() => setAutoRotate(!autoRotate)}
+        className={`${base} ${autoRotate ? idle : active}`}
+        title={autoRotate ? "Stop the globe from spinning" : "Resume spinning"}
+      >
+        <span aria-hidden="true">{autoRotate ? "❚❚" : "▶"}</span>
+        <span className="hidden sm:inline">{autoRotate ? "Stop rotation" : "Start rotation"}</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={panMode}
+        onClick={() => setPanMode(!panMode)}
+        className={`${base} ${panMode ? active : idle}`}
+        title="When on, dragging moves the globe around the screen instead of rotating it"
+      >
+        <span aria-hidden="true">✥</span>
+        <span className="hidden sm:inline">{panMode ? "Move: on" : "Move globe"}</span>
+      </button>
+      <button
+        type="button"
+        onClick={resetView}
+        className={`${base} ${idle}`}
+        title="Re-centre, reset zoom and face Mumbai"
+      >
+        <span aria-hidden="true">⟲</span>
+        <span className="hidden sm:inline">Reset view</span>
+      </button>
     </div>
   );
 }

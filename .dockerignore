@@ -7,3 +7,7 @@
 **/.idea
 **/*.log
 .git
+
+# Secrets must never enter an image
+.env
+**/.env

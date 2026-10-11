@@ -1,0 +1,15 @@
+$ kubectl -n orbitview scale deployment/ml-service --replicas=3
+deployment.apps/ml-service scaled
+Waiting for deployment "ml-service" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "ml-service" rollout to finish: 2 of 3 updated replicas are available...
+deployment "ml-service" successfully rolled out
+$ kubectl -n orbitview get pods -l component=ml-service -o wide
+NAME                          READY   STATUS    RESTARTS   AGE   IP          NODE             NOMINATED NODE   READINESS GATES
+ml-service-74d9db74cd-4p5lz   1/1     Running   0          12s   10.1.0.12   docker-desktop   <none>           <none>
+ml-service-74d9db74cd-8sjbq   1/1     Running   0          70s   10.1.0.8    docker-desktop   <none>           <none>
+ml-service-74d9db74cd-rz6jv   1/1     Running   0          12s   10.1.0.11   docker-desktop   <none>           <none>
+300 predict requests via the frontend service: 300 OK
+# Requests served per ml-service pod (from each pod's access log)
+ml-service-74d9db74cd-4p5lz: 119
+ml-service-74d9db74cd-8sjbq: 94
+ml-service-74d9db74cd-rz6jv: 87

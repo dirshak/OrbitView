@@ -1,0 +1,193 @@
+# Experiment 3 - OrbitView on Kubernetes (tested on Docker Desktop Kubernetes v1.30).
+#
+#   kubectl apply -f deploy/k8s/orbitview.yaml
+#   kubectl -n orbitview create secret generic orbitview-secrets --from-literal=GROQ_API_KEY=<key>   (optional)
+#   open http://localhost:8090
+#
+# Images come from Docker Hub (Experiment 2). Service names match the frontend's
+# nginx proxy (backend:8080, ml-service:8000).
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orbitview
+---
+# ---------------------------------------------------------------- Postgres
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: orbitview
+  labels: { app: orbitview, tier: database }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { component: postgres }
+  template:
+    metadata:
+      labels: { app: orbitview, component: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: astrotrack }
+            - { name: POSTGRES_PASSWORD, value: astrotrack }
+            - { name: POSTGRES_DB, value: astrotrack }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "astrotrack"] }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          emptyDir: {}   # demo only: data is lost if the pod is deleted
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: orbitview
+spec:
+  selector: { component: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432 }
+---
+# ---------------------------------------------------------------- Backend (.NET API)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: orbitview
+  labels: { app: orbitview, tier: api }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { component: backend }
+  template:
+    metadata:
+      labels: { app: orbitview, component: backend }
+    spec:
+      containers:
+        - name: backend
+          image: dirshak/orbitview-backend:1.0.1
+          imagePullPolicy: Always
+          env:
+            - { name: ASPNETCORE_ENVIRONMENT, value: Production }
+            - { name: ConnectionStrings__Postgres, value: "Host=postgres;Database=astrotrack;Username=astrotrack;Password=astrotrack" }
+            - { name: AstroTrack__Cors__AllowedOrigins__0, value: "http://localhost:8090" }
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: orbitview
+spec:
+  selector: { component: backend }
+  ports:
+    - { port: 8080, targetPort: 8080 }
+---
+# ---------------------------------------------------------------- ML service (prediction service)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: orbitview
+  labels: { app: orbitview, tier: ml }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { component: ml-service }
+  template:
+    metadata:
+      labels: { app: orbitview, component: ml-service }
+    spec:
+      containers:
+        - name: ml-service
+          image: dirshak/orbitview-ml-service:1.0.1
+          imagePullPolicy: Always
+          env:
+            - { name: BACKEND_URL, value: "http://backend:8080" }
+            - { name: OMP_NUM_THREADS, value: "1" }
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef: { name: orbitview-secrets, key: GROQ_API_KEY, optional: true }
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet: { path: /ml/health, port: 8000 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /ml/health, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          # Sized from Experiment 7 (measured p95 0.40 cores, peak ~190 MiB per worker).
+          resources:
+            requests: { cpu: 500m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-service
+  namespace: orbitview
+spec:
+  selector: { component: ml-service }
+  ports:
+    - { port: 8000, targetPort: 8000 }
+---
+# ---------------------------------------------------------------- Frontend (nginx + React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: orbitview
+  labels: { app: orbitview, tier: web }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { component: frontend }
+  template:
+    metadata:
+      labels: { app: orbitview, component: frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: dirshak/orbitview-frontend:1.0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { cpu: 250m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: orbitview
+spec:
+  type: LoadBalancer   # Docker Desktop publishes LoadBalancer services on localhost
+  selector: { component: frontend }
+  ports:
+    - { port: 8090, targetPort: 80 }

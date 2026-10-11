@@ -1,0 +1,19 @@
+$ kubectl -n orbitview get deploy,pods,svc -o wide
+NAME                         READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                               SELECTOR
+deployment.apps/backend      1/1     1            1           27s   backend      dirshak/orbitview-backend:1.0.1      component=backend
+deployment.apps/frontend     2/2     2            2           27s   frontend     dirshak/orbitview-frontend:1.0.1     component=frontend
+deployment.apps/ml-service   1/1     1            1           27s   ml-service   dirshak/orbitview-ml-service:1.0.1   component=ml-service
+deployment.apps/postgres     1/1     1            1           27s   postgres     postgres:16-alpine                   component=postgres
+
+NAME                              READY   STATUS    RESTARTS      AGE   IP          NODE             NOMINATED NODE   READINESS GATES
+pod/backend-d8d9855f9-rgxcb       1/1     Running   1 (18s ago)   27s   10.1.0.7    docker-desktop   <none>           <none>
+pod/frontend-f7b7c4664-jjngl      1/1     Running   0             27s   10.1.0.9    docker-desktop   <none>           <none>
+pod/frontend-f7b7c4664-shglj      1/1     Running   0             27s   10.1.0.10   docker-desktop   <none>           <none>
+pod/ml-service-74d9db74cd-8sjbq   1/1     Running   0             27s   10.1.0.8    docker-desktop   <none>           <none>
+pod/postgres-654c9f95dd-cvps7     1/1     Running   0             27s   10.1.0.6    docker-desktop   <none>           <none>
+
+NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+service/backend      ClusterIP      10.110.192.100   <none>        8080/TCP         27s   component=backend
+service/frontend     LoadBalancer   10.106.116.197   localhost     8090:31833/TCP   27s   component=frontend
+service/ml-service   ClusterIP      10.105.224.49    <none>        8000/TCP         27s   component=ml-service
+service/postgres     ClusterIP      10.103.153.89    <none>        5432/TCP         27s   component=postgres

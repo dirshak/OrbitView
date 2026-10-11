@@ -1,0 +1,103 @@
+{
+  "trained_at": "2026-10-11T10:14:52+00:00",
+  "dataset": {
+    "name": "NASA SMAP & MSL telemetry anomalies (Hundman et al., KDD 2018)",
+    "channels": 82,
+    "anomalies": 105,
+    "test_values": 517764
+  },
+  "method": {
+    "forecaster": "HistGradientBoostingRegressor per channel (200 iters, lr 0.1, 31 leaves)",
+    "inputs": "30 lags, 250-step rolling mean/std/min/max, last change, commands (current + last 50 steps)",
+    "smoothing_span": 105,
+    "threshold": "Telemanom nonparametric dynamic threshold, z in 2.5..11.5, error buffer 100, pruning p=0.13",
+    "baseline": "Out-of-limits: value outside training min/max +/- 5% of range"
+  },
+  "results": {
+    "model": {
+      "SMAP": {
+        "anomalies": 69,
+        "detected": 22,
+        "missed": 47,
+        "false_alarms": 6,
+        "precision": 0.7857142857142857,
+        "recall": 0.3188405797101449,
+        "f1": 0.45360824742268036,
+        "f05": 0.6077348066298343,
+        "median_detection_delay_steps": 28.5
+      },
+      "MSL": {
+        "anomalies": 36,
+        "detected": 14,
+        "missed": 22,
+        "false_alarms": 2,
+        "precision": 0.875,
+        "recall": 0.3888888888888889,
+        "f1": 0.5384615384615385,
+        "f05": 0.7000000000000001,
+        "median_detection_delay_steps": 0.0
+      },
+      "total": {
+        "anomalies": 105,
+        "detected": 36,
+        "missed": 69,
+        "false_alarms": 8,
+        "precision": 0.8181818181818182,
+        "recall": 0.34285714285714286,
+        "f1": 0.48322147651006714,
+        "f05": 0.6405693950177935,
+        "median_detection_delay_steps": 0.0
+      }
+    },
+    "out_of_limits": {
+      "SMAP": {
+        "anomalies": 69,
+        "detected": 28,
+        "missed": 41,
+        "false_alarms": 39,
+        "precision": 0.417910447761194,
+        "recall": 0.4057971014492754,
+        "f1": 0.411764705882353,
+        "f05": 0.4154302670623145,
+        "median_detection_delay_steps": 44.5
+      },
+      "MSL": {
+        "anomalies": 36,
+        "detected": 19,
+        "missed": 17,
+        "false_alarms": 31,
+        "precision": 0.38,
+        "recall": 0.5277777777777778,
+        "f1": 0.4418604651162791,
+        "f05": 0.4025423728813559,
+        "median_detection_delay_steps": 15.0
+      },
+      "total": {
+        "anomalies": 105,
+        "detected": 47,
+        "missed": 58,
+        "false_alarms": 70,
+        "precision": 0.4017094017094017,
+        "recall": 0.44761904761904764,
+        "f1": 0.4234234234234234,
+        "f05": 0.4101221640488656,
+        "median_detection_delay_steps": 30.0
+      }
+    },
+    "telemanom_published": {
+      "SMAP": {
+        "precision": 0.855,
+        "recall": 0.855
+      },
+      "MSL": {
+        "precision": 0.926,
+        "recall": 0.694
+      },
+      "total": {
+        "precision": 0.875,
+        "recall": 0.8
+      }
+    }
+  },
+  "sklearn_version": "1.9.1"
+}

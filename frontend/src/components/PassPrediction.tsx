@@ -129,6 +129,7 @@ function LocationPrompt({
 }
 
 const PRESETS = [
+  { label: "Mumbai", latitudeDeg: 19.076, longitudeDeg: 72.8777 },
   { label: "New York", latitudeDeg: 40.7128, longitudeDeg: -74.006 },
   { label: "London", latitudeDeg: 51.5074, longitudeDeg: -0.1278 },
   { label: "Tokyo", latitudeDeg: 35.6762, longitudeDeg: 139.6503 },
@@ -184,9 +185,9 @@ function downloadIcs(sat: SatelliteRecord, p: PassWindow): void {
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//AstroTrack//Pass//EN",
+    "PRODID:-//OrbitView//Pass//EN",
     "BEGIN:VEVENT",
-    `UID:${sat.noradId}-${p.startTime}@astrotrack`,
+    `UID:${sat.noradId}-${p.startTime}@orbitview`,
     `DTSTAMP:${dt(Date.now())}`,
     `DTSTART:${dt(p.startTime)}`,
     `DTEND:${dt(p.endTime)}`,

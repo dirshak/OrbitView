@@ -22,3 +22,11 @@ Thumbs.db
 # Local env
 .env
 .env.local
+
+# ML service
+ml-service/.venv/
+ml-service/data/
+__pycache__/
+
+# Local-only port remap
+docker-compose.override.yml

@@ -3,6 +3,7 @@ import { propagatePosition, predictPasses } from "../lib/propagation";
 import type { PassWindow, SatelliteRecord } from "../types/satellite";
 import { useUiStore } from "../store/satellites";
 import { PassPrediction } from "./PassPrediction";
+import { ReentryForecastSection } from "./ReentryForecastSection";
 
 interface DetailProps {
   satellite: SatelliteRecord | undefined;
@@ -53,7 +54,7 @@ export function SatelliteDetailPanel({ satellite, onClose }: DetailProps) {
   const isFav = favorites.has(satellite.noradId);
 
   return (
-    <aside className="panel pointer-events-auto absolute right-3 top-3 z-20 w-[360px] max-w-[calc(100vw-1.5rem)] flex flex-col max-h-[calc(100vh-1.5rem)]">
+    <aside className="panel pointer-events-auto absolute right-3 top-16 z-20 w-[360px] max-w-[calc(100vw-1.5rem)] flex flex-col max-h-[calc(100vh-7.5rem)]">
       <header className="flex items-start gap-2 border-b border-white/5 px-4 py-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -150,6 +151,8 @@ export function SatelliteDetailPanel({ satellite, onClose }: DetailProps) {
             loading={loadingPasses}
           />
         </section>
+
+        <ReentryForecastSection noradId={satellite.noradId} />
       </div>
     </aside>
   );

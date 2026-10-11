@@ -1,0 +1,26 @@
+{
+  "_note": "Public list prices used only to calculate hypothetical costs. No cloud resources were used.",
+  "region": "AWS ap-south-1 (Asia Pacific - Mumbai)",
+  "currency": "USD",
+  "hours_per_month": 730,
+  "ec2_on_demand_linux": {
+    "_source": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Asia%20Pacific%20(Mumbai)/Linux/index.json (published 2026-10-09)",
+    "t3.nano":    {"vcpu": 2, "mem_gib": 0.5, "usd_per_hour": 0.0056, "t3_baseline_per_vcpu": 0.05},
+    "t3.micro":   {"vcpu": 2, "mem_gib": 1,   "usd_per_hour": 0.0112, "t3_baseline_per_vcpu": 0.10},
+    "t3.small":   {"vcpu": 2, "mem_gib": 2,   "usd_per_hour": 0.0224, "t3_baseline_per_vcpu": 0.20},
+    "t3.medium":  {"vcpu": 2, "mem_gib": 4,   "usd_per_hour": 0.0448, "t3_baseline_per_vcpu": 0.20},
+    "c6i.large":  {"vcpu": 2, "mem_gib": 4,   "usd_per_hour": 0.0850},
+    "m6i.large":  {"vcpu": 2, "mem_gib": 8,   "usd_per_hour": 0.1010},
+    "c6i.xlarge": {"vcpu": 4, "mem_gib": 8,   "usd_per_hour": 0.1700}
+  },
+  "t3_unlimited_surplus_usd_per_vcpu_hour": {
+    "value": 0.05,
+    "_source": "https://aws.amazon.com/ec2/instance-types/t3/ (Linux); baselines from AWS burstable-instance documentation"
+  },
+  "fargate_linux_x86": {
+    "_source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECS/current/ap-south-1/index.json (published 2026-09-11)",
+    "usd_per_vcpu_hour": 0.04256,
+    "usd_per_gb_hour": 0.004655,
+    "_valid_sizes_vcpu_to_gb": {"0.25": [0.5, 1, 2], "0.5": [1, 2, 3, 4], "1": [2, 3, 4, 5, 6, 7, 8], "2": [4, 6, 8, 10, 12, 14, 16], "4": [8, 12, 16, 20, 24, 28, 30]}
+  }
+}

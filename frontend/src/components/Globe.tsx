@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { gstime } from "satellite.js";
 import type { SatelliteRecord } from "../types/satellite";
 import {
   computeOrbitTrail,
@@ -7,6 +8,7 @@ import {
   propagatePosition,
 } from "../lib/propagation";
 import { useUiStore } from "../store/satellites";
+import { createEarthTexture, createLabelSprite } from "../lib/earthTexture";
 
 interface GlobeProps {
   satellites: SatelliteRecord[];
@@ -14,6 +16,25 @@ interface GlobeProps {
 }
 
 const EARTH_RADIUS = 1; // scene units
+// Left search panel width incl. margin; on wide screens the globe is centred beside it.
+const SIDE_PANEL_PX = 340;
+// Globe diameter as a fraction of the free viewport area.
+const GLOBE_FILL = 0.72;
+// Default view faces Mumbai: spin its longitude to the camera, then tilt its latitude to centre.
+const HOME_LAT = 19.076;
+const HOME_LON = 72.8777;
+const HOME_ROT_X = THREE.MathUtils.degToRad(HOME_LAT);
+const HOME_ROT_Y = -Math.PI / 2 - THREE.MathUtils.degToRad(HOME_LON);
+
+const CONTINENTS = [
+  { name: "North America", lat: 50, lon: -103 },
+  { name: "South America", lat: -20, lon: -62 },
+  { name: "Europe", lat: 54, lon: 18 },
+  { name: "Africa", lat: 4, lon: 20 },
+  { name: "Asia", lat: 45, lon: 88 },
+  { name: "Oceania", lat: -28, lon: 136 },
+  { name: "Antarctica", lat: -78, lon: 30 },
+];
 
 export function Globe({ satellites, visibleSatellites }: GlobeProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -39,7 +60,7 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
       0.01,
       100
     );
-    camera.position.set(0, 0.6, 3);
+    camera.position.set(0, 0, 3);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -52,30 +73,62 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
     const earthGeom = new THREE.SphereGeometry(EARTH_RADIUS, 96, 96);
     const earthMat = new THREE.ShaderMaterial({
       uniforms: {
+        // Earth-fixed frame (same axes as geodeticToVector3), so drag rotation can't move the terminator.
         uSunDir: { value: new THREE.Vector3(1, 0.3, 0.5).normalize() },
+        uMap: { value: null as THREE.Texture | null },
+        uHasMap: { value: 0 },
       },
       vertexShader: /* glsl */ `
-        varying vec3 vWorldNormal;
+        varying vec3 vNormal;
+        varying vec2 vUv;
         void main() {
-          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          vNormal = normal;
+          vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uSunDir;
-        varying vec3 vWorldNormal;
+        uniform sampler2D uMap;
+        uniform float uHasMap;
+        varying vec3 vNormal;
+        varying vec2 vUv;
         void main() {
-          float sunDot = dot(normalize(vWorldNormal), normalize(uSunDir));
+          float sunDot = dot(normalize(vNormal), normalize(uSunDir));
           // Smooth terminator band: ±4° in angular terms (~0.07 radians)
           float t = smoothstep(-0.07, 0.07, sunDot);
-          vec3 dayColor   = vec3(0.09, 0.25, 0.52);
-          vec3 nightColor = vec3(0.015, 0.03, 0.09);
+          vec3 dayColor = uHasMap > 0.5 ? texture2D(uMap, vUv).rgb : vec3(0.09, 0.25, 0.52);
+          // Night side stays dim but legible so countries remain visible.
+          vec3 nightColor = dayColor * 0.32 + vec3(0.0, 0.01, 0.03);
           gl_FragColor = vec4(mix(nightColor, dayColor, t), 1.0);
         }
       `,
     });
     const earth = new THREE.Mesh(earthGeom, earthMat);
     scene.add(earth);
+
+    // Country map loads asynchronously; the plain ocean shader shows until it's ready.
+    let disposed = false;
+    createEarthTexture(renderer.capabilities.maxTextureSize)
+      .then((tex) => {
+        if (disposed) {
+          tex.dispose();
+          return;
+        }
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        earthMat.uniforms.uMap.value = tex;
+        earthMat.uniforms.uHasMap.value = 1;
+      })
+      .catch(() => {
+        // keep the plain-ocean fallback
+      });
+
+    const continentLabels = CONTINENTS.map(({ name, lat, lon }) => {
+      const sprite = createLabelSprite(name);
+      const v = geodeticToVector3(lat, lon, 250, EARTH_RADIUS);
+      sprite.position.set(v.x, v.y, v.z);
+      return sprite;
+    });
 
     // Subtle atmosphere — back-side sphere with additive blending.
     const atmoGeom = new THREE.SphereGeometry(EARTH_RADIUS * 1.06, 64, 64);
@@ -211,7 +264,39 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
     let lastY = 0;
     const sceneRotation = new THREE.Group();
     scene.add(sceneRotation);
-    sceneRotation.add(earth, atmo, equator, instanced, orbitLine, groundTrackLine, ring);
+    sceneRotation.add(earth, atmo, equator, instanced, orbitLine, groundTrackLine, ring, ...continentLabels);
+    sceneRotation.rotation.set(HOME_ROT_X, HOME_ROT_Y, 0);
+
+    // ---- View fitting + pan (screen-space offset) + zoom ----
+    const view = { panX: 0, panY: 0, zoom: 1, baseDistance: 3 };
+    const applyView = () => {
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w === 0 || h === 0) return;
+      const sideInset = w >= 768 ? SIDE_PANEL_PX : 0;
+      // Distance at which the globe's diameter covers GLOBE_FILL of the free area.
+      const fraction = (GLOBE_FILL * Math.min(h, w - sideInset)) / h;
+      const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      view.baseDistance = Math.sqrt(1 + (1 / (fraction * tanHalfFov)) ** 2);
+      camera.position.set(0, 0, view.baseDistance * view.zoom);
+      camera.lookAt(0, 0, 0);
+      camera.aspect = w / h;
+      camera.setViewOffset(w, h, -(sideInset / 2 + view.panX), -view.panY, w, h);
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    };
+    const resetView = () => {
+      view.panX = 0;
+      view.panY = 0;
+      view.zoom = 1;
+      sceneRotation.rotation.set(HOME_ROT_X, HOME_ROT_Y, 0);
+      applyView();
+    };
+    const updateCursor = () => {
+      const pan = useUiStore.getState().panMode;
+      renderer.domElement.style.cursor = pan ? (isDragging ? "grabbing" : "move") : "grab";
+    };
+    applyView();
 
     const onPointerDown = (e: PointerEvent) => {
       isDragging = true;
@@ -219,6 +304,7 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
       lastX = e.clientX;
       lastY = e.clientY;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      updateCursor();
     };
     const onPointerMove = (e: PointerEvent) => {
       if (!isDragging) return;
@@ -227,6 +313,12 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
       lastX = e.clientX;
       lastY = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
+      if (useUiStore.getState().panMode) {
+        view.panX += dx;
+        view.panY += dy;
+        applyView();
+        return;
+      }
       sceneRotation.rotation.y += dx * 0.005;
       sceneRotation.rotation.x = THREE.MathUtils.clamp(
         sceneRotation.rotation.x + dy * 0.005,
@@ -237,13 +329,14 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
     const onPointerUp = (e: PointerEvent) => {
       const wasClick = isDragging && !dragMoved;
       isDragging = false;
+      updateCursor();
       if (wasClick) handleClick(e);
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const next = camera.position.length() * (1 + e.deltaY * 0.001);
-      const clamped = THREE.MathUtils.clamp(next, 1.4, 8);
-      camera.position.setLength(clamped);
+      const next = view.zoom * (1 + e.deltaY * 0.001);
+      view.zoom = THREE.MathUtils.clamp(next, 1.25 / view.baseDistance, 12 / view.baseDistance);
+      applyView();
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
@@ -292,6 +385,7 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
     const positionsRef: THREE.Matrix4[] = [];
     const tmpMatrix = new THREE.Matrix4();
     const tmpColor = new THREE.Color();
+    const tmpLabelPos = new THREE.Vector3();
     const CATEGORY_COLOR: Record<string, number> = {
       iss: 0xffb547,
       "earth-observation": 0x5ce1ff,
@@ -312,7 +406,9 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
 
     const animate = () => {
       const dt = clock.getDelta();
-      if (!isDragging) sceneRotation.rotation.y += dt * 0.02;
+      if (!isDragging && useUiStore.getState().autoRotate) {
+        sceneRotation.rotation.y += dt * 0.02;
+      }
 
       // Update solar position — approximate Sun direction in ECI, mapped to scene Y-up coords.
       // d = days since J2000.5; formula accurate to ~1°.
@@ -321,13 +417,27 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
       const g = ((357.529 + 0.98560028 * d) % 360) * (Math.PI / 180);
       const L = ((280.459 + 0.98564736 * d + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) % 360) * (Math.PI / 180);
       const e = (23.439 - 0.0000004 * d) * (Math.PI / 180);
-      // ECI unit vector → scene Y-up: (x_eci, z_eci, -y_eci)
       const sx = Math.cos(L);
       const sy_eci = Math.sin(L) * Math.cos(e);
       const sz_eci = Math.sin(L) * Math.sin(e);
-      const sunDir = new THREE.Vector3(sx, sz_eci, -sy_eci).normalize();
-      (earthMat.uniforms as Record<string, { value: unknown }>).uSunDir.value = sunDir;
-      sun.position.copy(sunDir.clone().multiplyScalar(10));
+      // ECI → Earth-fixed (rotate by sidereal time), then to scene Y-up: (x, z, -y).
+      const gmst = gstime(now);
+      const sxEcf = Math.cos(gmst) * sx + Math.sin(gmst) * sy_eci;
+      const syEcf = -Math.sin(gmst) * sx + Math.cos(gmst) * sy_eci;
+      const sunDir = new THREE.Vector3(sxEcf, sz_eci, -syEcf).normalize();
+      earthMat.uniforms.uSunDir.value = sunDir;
+      sun.position.copy(sunDir.clone().applyQuaternion(sceneRotation.quaternion).multiplyScalar(10));
+
+      // Continent names fade out when zoomed in close enough to read country names.
+      // Labels also fade towards the limb and hide on the far side of the globe.
+      const zoomOpacity = THREE.MathUtils.clamp((camera.position.z - 1.8) / 1.0, 0, 1) * 0.95;
+      sceneRotation.updateMatrixWorld();
+      for (const label of continentLabels) {
+        tmpLabelPos.copy(label.position).applyMatrix4(sceneRotation.matrixWorld).normalize();
+        const facing = THREE.MathUtils.smoothstep(tmpLabelPos.z, 0.2, 0.45);
+        label.material.opacity = zoomOpacity * facing;
+        label.visible = label.material.opacity > 0.01;
+      }
       const visible = visibleRef.current;
       positionsRef.length = 0;
       const colorAttr = instanced.instanceColor!;
@@ -446,18 +556,18 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
     };
     animate();
 
-    const onResize = () => {
-      if (!mount) return;
-      const w = mount.clientWidth;
-      const h = mount.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
-    };
-    const ro = new ResizeObserver(onResize);
+    const ro = new ResizeObserver(applyView);
     ro.observe(mount);
 
+    updateCursor();
+    const unsubscribe = useUiStore.subscribe((state, prev) => {
+      if (state.viewResetToken !== prev.viewResetToken) resetView();
+      if (state.panMode !== prev.panMode) updateCursor();
+    });
+
     return () => {
+      disposed = true;
+      unsubscribe();
       cancelAnimationFrame(frameId);
       ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
@@ -479,6 +589,11 @@ export function Globe({ satellites, visibleSatellites }: GlobeProps) {
       groundTrackMat.dispose();
       ringGeom.dispose();
       ringMat.dispose();
+      earthMat.uniforms.uMap.value?.dispose();
+      for (const label of continentLabels) {
+        label.material.map?.dispose();
+        label.material.dispose();
+      }
     };
     // We intentionally run this effect once and read latest data via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps

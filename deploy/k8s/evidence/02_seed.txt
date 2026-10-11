@@ -1,0 +1,4 @@
+# Seed: copied the satellites table (CelesTrak was temporarily blocking this IP)
+$ kubectl -n orbitview exec postgres-654c9f95dd-cvps7 -- psql -U astrotrack -d astrotrack -tc 'select count(*) from satellites'
+ 15942
+

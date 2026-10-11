@@ -1,0 +1,109 @@
+ORBITVIEW - CLOUD LAB EXPERIMENTS 7 AND 8 (LOCAL SIMULATION)
+======================================================================
+
+System under test: the OrbitView prediction service (ml-service: FastAPI + scikit-learn
+re-entry models), running in Docker on this PC. Load generated with k6 0.54.0 from a
+container on the same Docker network. Small subset of data: 200 TLEs for online
+requests, 500 TLEs for the batch job.
+Host: 12 CPUs, 8169959424 bytes, 6.18.40.1-microsoft-standard-WSL2 (Docker Desktop / WSL2).
+
+What is measured vs simulated
+- MEASURED on this machine: latency, errors, throughput, CPU and memory use, batch time.
+- SIMULATED: cloud instance types (Docker CPU quota + memory limit with the same vCPU
+  count and RAM). Real instances differ in CPU model, clock speed and network.
+- CALCULATED: costs, from public AWS Mumbai list prices (prices.json). No cloud
+  resources were created and nothing was paid for.
+
+Findings made while setting up the measurements (kept as results):
+- With no limits and model threading on all 12 host CPUs, 50 req/s made the service
+  burn 6 cores and time out 97% of requests (thread oversubscription). Fix: one
+  OpenMP thread per prediction (OMP_NUM_THREADS=1).
+- Re-scoring the whole catalogue blocked request handling for seconds. Fix: run it on a
+  worker thread.
+- Each prediction costs ~35 ms of CPU (4 tree-ensemble models, 400-500 trees each),
+  so one worker process saturates at ~15-18 req/s regardless of vCPUs.
+
+EXPERIMENT 7 - CLOUD COST OPTIMIZATION THROUGH RESOURCE RIGHT-SIZING
+======================================================================
+
+Workload: 10 requests/s for 30 s (70% single-TLE re-entry predictions,
+20% forecast lookups, 10% watch-list queries) + a 500-TLE batch prediction job x3.
+Service as deployed: 1 uvicorn worker. Resource use sampled every ~1 s with docker stats.
+Right-sizing rule: CPU = p95 measured CPU x 1.3 (rounded up to 0.25 vCPU);
+memory = peak measured memory (startup, load or batch) x 1.3 (rounded up to 64 MiB, min 256).
+
+                                        Before             After         Too small
+Allocated vCPU                               4              0.75              0.25
+Allocated memory (MiB)                    8192               256               256
+CPU used, avg (cores)                     0.23              0.22              0.24
+CPU used, p95 (cores)                     0.40              0.33              0.26
+Memory peak (MiB)                          186               185               256
+CPU utilisation (p95)                      10%               43%              103%
+Memory utilisation                          2%               72%              100%
+Latency p50                              27 ms             26 ms            10.0 s
+Latency p95                              50 ms             46 ms            10.0 s
+Latency p99                              81 ms             72 ms            10.0 s
+Error rate                                0.0%              0.7%            100.0%
+Throughput (req/s)                        10.0              10.0               6.4
+Batch 500 TLEs (median s)                 0.10              0.12            failed
+Fargate task size                  4 vCPU/8 GB       1 vCPU/2 GB  0.25 vCPU/0.5 GB
+Cost per month (USD)                   $151.46            $37.87             $9.47
+
+Findings
+- Before: 4 vCPU / 8192 MiB allocated, but the service used at most 0.40 cores (p95) and 186 MiB - 10% CPU and 2% memory utilisation.
+- After right-sizing to 0.75 vCPU / 256 MiB, p95 latency went from 50 ms to 46 ms with 0.7% errors at the same load.
+- Monthly cost as an AWS Fargate task: $151.46 -> $37.87 (75% less).
+- Too small (0.25 vCPU / 256 MiB): p95 10.0 s, errors 100.0% - shows the floor below which right-sizing hurts users.
+- Why one worker can't use 4 vCPUs: a single Python process serves requests; extra cores sit idle.
+
+EXPERIMENT 8 - FINOPS PRINCIPLES AND INSTANCE-TYPE COMPARISON
+======================================================================
+
+Workload: 20 requests/s for 30 s (same mix as experiment 7) + 500-TLE batch job x3.
+Workers = vCPUs (2 or 4). One worker saturates at ~15-18 req/s, so this load needs at least 2.
+Performance target (set before running): p95 <= 300 ms, errors < 1%, dropped < 1%,
+batch of 500 TLEs <= 5 s, no out-of-memory kill.
+Instance shapes are simulated locally with Docker CPU quotas + memory limits.
+'burst' = T3 running at full vCPU (unlimited mode, surplus CPU billed at $0.05/vCPU-h);
+'baseline' = T3 in standard mode after credits run out (CPU capped at its baseline).
+Costs use AWS Mumbai on-demand Linux list prices; nothing was deployed or paid for.
+
+Configuration          vCPU    Mem      p95    Err CPU avg  Mem pk  Batch   $/hour  $/month $/1M req  Result
+t3.nano (burst)           2   512m    86 ms   0.0%    0.50     408   0.10   0.0258    18.81    0.357  PASS: meets target
+t3.micro (burst)          2     1g    46 ms   0.0%    0.47     404   0.09   0.0248    18.07    0.343  PASS: meets target
+t3.micro (baseline)     0.2     1g   10.0 s 100.0%    0.20     640   0.51   0.0112     8.18    0.265  FAIL: p95 10002 ms > 300; errors 100.0%; dropped 22.0%
+t3.small (burst)          2     2g   10.0 s   5.6%    0.95     397   0.17   0.0500    36.47    0.940  FAIL: p95 9966 ms > 300; errors 5.6%; dropped 2.0%
+t3.small (baseline)     0.4     2g   10.0 s 100.0%    0.39     561   0.20   0.0224    16.35    0.530  FAIL: p95 10001 ms > 300; errors 100.0%; dropped 22.0%
+t3.medium (burst)         2     4g    55 ms   0.0%    0.44     395   0.07   0.0469    34.25    0.650  PASS: meets target
+t3.medium (baseline)    0.4     4g   10.0 s 100.0%    0.39     522   0.20   0.0448    32.70    1.063  FAIL: p95 10001 ms > 300; errors 100.0%; dropped 22.1%
+c6i.large                 2     4g    34 ms   0.0%    0.35     393   0.06   0.0850    62.05    1.178  PASS: meets target
+m6i.large                 2     8g    34 ms   0.0%    0.36     392   0.07   0.1010    73.73    1.400  PASS: meets target
+c6i.xlarge                4     8g    34 ms   0.0%    0.36     760   0.08   0.1700   124.10    2.358  PASS: meets target
+
+$/hour for T3 burst rows = on-demand price + surplus CPU charge, assuming this load runs 24/7.
+
+Findings
+- Most cost-efficient option that meets the target: t3.micro (burst) at $0.0248/hour ($18.07/month), of which $0.0136/hour is surplus-CPU charge.
+- Most expensive passing option: c6i.xlarge at $124.10/month (6.9x the cheapest) for similar latency.
+- t3.micro (baseline) fails: p95 10002 ms > 300; errors 100.0%; dropped 22.0%.
+- t3.small (burst) fails: p95 9966 ms > 300; errors 5.6%; dropped 2.0%.
+- t3.small (baseline) fails: p95 10001 ms > 300; errors 100.0%; dropped 22.0%.
+- t3.medium (baseline) fails: p95 10001 ms > 300; errors 100.0%; dropped 22.1%.
+- T3 unlimited surplus charges (sustained load above the CPU baseline) as a share of the bill:
+    t3.nano (burst)      on-demand $0.0056/h + surplus $0.0202/h (78% of $0.0258/h)
+    t3.micro (burst)     on-demand $0.0112/h + surplus $0.0136/h (55% of $0.0248/h)
+    t3.small (burst)     on-demand $0.0224/h + surplus $0.0276/h (55% of $0.0500/h)
+    t3.medium (burst)    on-demand $0.0448/h + surplus $0.0021/h (5% of $0.0469/h)
+  A smaller T3 has a lower baseline, so under sustained load it can cost more than the next size up.
+
+Caveats
+- Each configuration was run once (30 s measured after a 20 s warm-up), and results are reported as measured.
+  t3.small (burst) has the same vCPU count as t3.micro (burst) and t3.medium (burst), which passed;
+  with one run per configuration this outlier can't be separated from interference on the host.
+- Simulated instances share one host CPU model; real T3/C6i/M6i CPUs differ in speed.
+- Surplus-credit cost assumes the measured load runs 24/7; with idle periods T3 earns credits back.
+
+Charts: experiments/finops/charts/exp7_allocated_vs_used.png, exp8_latency.png, exp8_cost.png
+Raw data: experiments/finops/results/*.json (k6 summaries and per-run measurements)
+Reproduce: ml-service/.venv/Scripts/python experiments/finops/run_experiments.py all
+           ml-service/.venv/Scripts/python experiments/finops/analyze.py

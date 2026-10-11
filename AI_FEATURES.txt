@@ -1,0 +1,556 @@
+ORBITVIEW - AI / ML FEATURES AND CALCULATIONS
+=============================================
+
+OrbitView has three AI features, all served by the Python "ml-service"
+container (FastAPI, folder ml-service/), reached by the browser through
+nginx at /ml/... (port 5090 when called directly):
+
+  1. Ask OrbitView   - an LLM assistant (Groq) that answers questions by
+                       calling OrbitView's own data through "tools".
+  2. Re-entry Watch  - four trained machine-learning models that forecast
+                       when low-orbit objects will fall back to Earth.
+  3. Spacecraft Health - per-channel ML models that raise alerts on real
+                       NASA spacecraft telemetry (SMAP satellite and
+                       Curiosity rover), shown in a replay dashboard.
+
+Before these were added, the project had no AI/ML. Pass prediction is
+physics (SGP4), and the pass "visibility score" is a hand-written rule
+(see Appendix B).
+
+
+ARCHITECTURE
+------------
+
+  Browser (React)
+     |  /api/...  ->  .NET backend (catalogue, positions, passes, missions)
+     |  /ml/...   ->  ml-service (Python)
+                        |- re-entry models (scikit-learn, models/reentry.joblib)
+                        |- telemetry anomaly results (models/health/)
+                        |- assistant -> Groq API (LLM) -> tool calls -> backend + models
+
+  Endpoints
+    GET  /ml/health                   status, number of objects scored, assistant on/off
+    GET  /ml/reentry/{noradId}        forecast for one satellite
+    GET  /ml/reentry?within_days=30   watch list, soonest first
+    GET  /ml/reentry/model-card       training data summary and test metrics
+    POST /ml/reentry/predict          run the re-entry models on any TLEs (one or a batch)
+    GET  /ml/telemetry/summary        anomaly-detection metrics + per-channel results
+    GET  /ml/telemetry/channels/{id}  one channel's series for the dashboard charts
+    POST /ml/assistant/chat           assistant conversation
+
+  Configuration (.env in the repo root)
+    GROQ_API_KEY=...                  read only by ml-service, never sent to the browser
+    GROQ_MODEL=openai/gpt-oss-120b    any Groq chat model that supports tool use
+
+
+=====================================================================
+FEATURE 1 - "ASK ORBITVIEW" ASSISTANT (Groq LLM + tool calling)
+=====================================================================
+
+Where: header button "Ask OrbitView" -> chat panel.
+Code:  ml-service/app/assistant.py, frontend/src/components/AssistantPanel.tsx
+
+How a question is answered (tool-calling loop)
+  1. The browser sends the conversation plus context: the user's timezone,
+     saved observer location, and the satellite selected on the globe.
+  2. ml-service builds a system prompt and sends it, the conversation and
+     the tool definitions to Groq's chat completions API
+     (https://api.groq.com/openai/v1/chat/completions).
+  3. If the model asks for tools, ml-service runs each one against live
+     data and sends the results back to the model.
+  4. This repeats until the model writes a final answer, up to 6 rounds.
+  5. The reply goes back to the browser. Satellites named in the reply
+     (by name or NORAD id) become buttons that select them on the globe.
+
+Tools the model can call
+  search_satellites        find satellites in the live catalogue by name or
+                           NORAD id, optionally by category (up to 25 results).
+                           Common names are mapped to catalogue names
+                           (Tiangong / Chinese space station -> CSS,
+                           Hubble -> HST). If the full phrase misses, every
+                           word must match instead. With no match it returns
+                           a hint about official names.
+  get_satellite_details    perigee and apogee altitude, inclination, period,
+                           category (computed from the TLE, formulas below)
+  get_current_position     live latitude, longitude, altitude and speed
+                           (backend SGP4)
+  predict_passes           upcoming passes over any latitude/longitude
+                           (backend SGP4, default 72 h, up to 10 passes).
+                           Sorted by time, with start/peak/end already
+                           converted to the user's timezone
+                           (e.g. "Sun 11 Oct 2026, 16:32 IST").
+  get_reentry_forecast     ML re-entry forecast for one satellite (Feature 2)
+  list_upcoming_reentries  ML watch list (station-kept satellites excluded)
+  list_missions            curated NASA/NOAA mission profiles
+
+System prompt rules (summary)
+  - Use the tools; never invent positions, pass times or forecasts.
+  - Look a satellite up before using a NORAD id it isn't sure of.
+  - The prompt gives the current local date and time. The model must quote
+    the ready-made local times in tool results (fields ending in _local)
+    and never convert dates or work out weekdays itself. This was added
+    because the model got weekdays wrong when it converted UTC itself.
+  - List passes in time order; don't guess whether the sky is dark.
+  - Passes with maximum elevation above ~30 deg are good; below ~10 deg
+    are hard to see.
+  - Re-entry forecasts are statistical, ignore manoeuvres, and should be
+    given with their window. If stationKept=true, explain that the
+    satellite holds its orbit, so the date only applies if it stopped
+    manoeuvring.
+  - Default observer location: the user's saved location, otherwise
+    Mumbai (19.076 N, 72.8777 E).
+
+Limits and settings
+  temperature 0.2; max 1,200 output tokens per call; 6 tool rounds;
+  last 12 messages kept; each message cut to 2,000 characters; each tool
+  result cut to 12,000 characters.
+  If 6 rounds are used up, one final call is made with tools switched off
+  so the model answers with what it has gathered.
+  Groq free-tier rate limit (8,000 tokens/minute for gpt-oss-120b): when
+  Groq replies 429 "try again in N s" and N <= 20 s, the service waits and
+  retries (up to 2 retries). Otherwise the chat shows "try again in about
+  N seconds" (HTTP 429). Re-entry tool results are trimmed to the fields
+  the model needs, to save tokens.
+  No key: HTTP 503 and the panel shows setup instructions.
+  Other Groq errors: HTTP 502 with the error text.
+
+
+=====================================================================
+FEATURE 2 - RE-ENTRY FORECASTING (trained ML models)
+=====================================================================
+
+Where: header button "Re-entry Watch" (Upcoming list and Model card tab),
+       and the "Re-entry forecast - ML" section of each satellite's
+       detail panel.
+Code:  ml-service/training/*.py (training), ml-service/app/reentry.py
+       and ml-service/app/features.py (serving)
+
+Questions answered
+  Model 1     Will this object re-enter within 365 days? (probability)
+  Models 2-4  If so, how many days until re-entry? Gives a best guess
+              (50th percentile) and an 80% window (10th to 90th percentile).
+
+
+2.1 DATA (all public, no account needed)
+-----------------------------------------
+  Orbit history  Space-Track TLE history 2019-2026, from the Hugging Face
+                 mirror juliensimon/space-track-tle-history. Queried
+                 remotely with DuckDB; kept one element set per object per
+                 day (the day's last) where mean motion > 11.25 rev/day and
+                 perigee < 700 km.
+  Labels         Actual re-entry (decay) dates from the CelesTrak SATCAT,
+                 which also supplies object type, radar size (RCS) and
+                 launch date.
+  Solar activity Daily F10.7 solar radio flux from CelesTrak space weather.
+                 It drives upper-atmosphere density, and hence drag.
+
+  Final dataset  1,874,484 rows (one object on one day)
+                 23,933 objects; 10,704 of them re-entered
+                 history 2019-01-01 to 2026-10-09
+
+
+2.2 LABELS (TARGETS)
+--------------------
+  days_to_decay = SATCAT decay date - date of the element set
+                  (rows after the decay date are dropped as glitches)
+
+  label_1y = 1     if 0 <= days_to_decay <= 365
+             0     if the object never re-entered or re-entered more than
+                   365 days later, AND the row is at least 365 days before
+                   the end of the data (so survival is actually known)
+             empty otherwise (can't tell yet; not used by the classifier)
+
+  "End of the data" = the last day with more than 1,000 element sets
+  (2026-10-10). A few stray far-future dates in the source are ignored.
+
+
+2.3 SAMPLING AND WEIGHTS
+------------------------
+  Rows are thinned with a deterministic hash of (norad_id, day) so that
+  thousands of long-lived Starlinks don't dominate:
+    days_to_decay <= 30            keep every row
+    days_to_decay 31-365           keep 1 in 3
+    days_to_decay 366-730          keep 1 in 7
+    survived a year (label_1y = 0) keep 1 in 40
+
+  Training weights partly undo the thinning:
+    days_to_decay <= 30  -> 1
+    days_to_decay <= 730 -> 3
+    all other rows       -> 40
+
+
+2.4 ORBIT CALCULATIONS AND FEATURES
+-----------------------------------
+  Constants
+    mu  = 398600.4418 km^3/s^2   (Earth's gravitational parameter)
+    Re  = 6378.137 km            (Earth's equatorial radius)
+    H   = 60 km                  (thermosphere density scale height)
+    h_r = 180 km                 (altitude treated as re-entry)
+
+  Reading a TLE (character columns, counted from 0)
+    mean motion n [rev/day]       line 2 [52:63]
+    eccentricity e                line 2 [26:33], with "0." in front
+    inclination i [deg]           line 2 [8:16]
+    ndot [rev/day^2]              line 1 [33:43]  (this field is HALF of dn/dt)
+    B* drag term                  line 1 [53:61]  (assumed-decimal format,
+                                                   e.g. " 20582-3" = 0.20582e-3)
+    epoch                         line 1 [18:20] year, [20:32] day of year
+
+  Semi-major axis from mean motion (Kepler's third law)
+    n_rad = n * 2*pi / 86400                 [rad/s]
+    a     = (mu / n_rad^2)^(1/3)             [km]
+
+  Perigee and apogee altitude
+    perigee = a * (1 - e) - Re
+    apogee  = a * (1 + e) - Re
+    mean altitude h = a - Re
+
+  Orbital period = 1440 / n  [minutes]
+
+  Physics lifetime estimate (also the baseline the models are compared to)
+    With an exponential atmosphere, density ~ exp(-h/H), so the orbit
+    shrinks faster as it gets lower. Integrating dh/dt = -k*exp(-h/H) from
+    the current altitude down to h_r gives:
+
+      decay rate   |dh/dt| = (2/3) * a * (2 * ndot) / n          [km/day]
+                   (from a ~ n^(-2/3), so da/dt = -(2/3)*a*(dn/dt)/n,
+                    and dn/dt = 2 * ndot)
+
+      days left    t = H / |dh/dt| * (1 - exp(-(h - h_r) / H))
+
+    t = 0 if h <= h_r; undefined if ndot <= 0 (orbit not shrinking);
+    clipped to 0-20,000 days.
+
+  The 15 model inputs (all computable from a single TLE, so the live
+  service uses exactly what the models were trained on)
+     1 perigee_km     perigee altitude
+     2 apogee_km      apogee altitude
+     3 eccentricity
+     4 inclination
+     5 mean_motion    orbits per day
+     6 ndot           TLE decay-rate field
+     7 bstar          TLE drag term
+     8 ndot_over_n    ndot / n (relative decay rate)
+     9 physics_days   physics lifetime estimate above
+    10 object_type    PAY=0, R/B=1, DEB=2, UNK=3 (treated as categorical)
+    11 rcs_m2         radar cross-section from SATCAT (may be missing)
+    12 age_days       days since launch
+    13 is_starlink    1 if the name contains "STARLINK"
+    14 f107_obs       solar flux that day
+    15 f107_last81    solar flux, trailing 81-day average
+
+
+2.5 MODELS
+----------
+  Library: scikit-learn 1.9.1, HistGradientBoosting (gradient-boosted
+  decision trees). Random seed 42.
+
+  Model 1 - classifier, P(re-entry within 365 days)
+    HistGradientBoostingClassifier(max_iter=400, learning_rate=0.08,
+      max_leaf_nodes=63, min_samples_leaf=50, l2_regularization=1.0)
+    trained on rows with a known label_1y
+
+  Models 2-4 - quantile regressors at q = 0.10, 0.50 and 0.90
+    HistGradientBoostingRegressor(loss="quantile", max_iter=500,
+      learning_rate=0.06, max_leaf_nodes=63, min_samples_leaf=40,
+      l2_regularization=1.0)
+    target y = log(1 + days_to_decay); trained on rows with
+    days_to_decay <= 400. Predictions are turned back into days with
+    exp(y) - 1.
+    Quantile (pinball) loss for quantile q, residual r = y - prediction:
+      loss = q * r       if r >= 0
+             (q - 1) * r if r < 0
+
+
+2.6 TRAIN / CALIBRATION / TEST SPLIT
+------------------------------------
+  Test set: 20% of LAUNCHES, not rows (GroupShuffleSplit grouped by the
+  first 8 characters of the international designator, e.g. "2020-073").
+  Satellites from the same launch never appear in both training and test,
+  so batch-mates can't leak.
+
+  Calibration set: 15% of the training launches (seed 43). The quantile
+  regressors are fitted on the remaining 85%; the classifier uses all of
+  the training launches.
+
+
+2.7 INTERVAL CALIBRATION (Conformalized Quantile Regression, CQR)
+-----------------------------------------------------------------
+  Raw [q10, q90] windows are meant to contain 80% of outcomes but held
+  only 74.9% on test launches. Calibration fixes that:
+
+    For each calibration row (days_to_decay <= 365), in log-days:
+      s = max(q10_pred - y, y - q90_pred)       (how far outside the window)
+    margin m = the ceil((n + 1) * 0.8) / n quantile of s
+             = 0.0269 log-days   (n = 97,302 calibration rows)
+
+    Final window (also used when serving):
+      lower = exp(min(q10 - m, q50)) - 1
+      upper = exp(max(q90 + m, q50)) - 1
+      best guess = exp(q50) - 1
+
+  Result: 79.8% of test re-entries fall inside the window (target 80%).
+
+
+2.8 TEST RESULTS (held-out launches)
+------------------------------------
+  Model 1 - classifier (420,784 test rows; 15.7% re-entered within a year)
+                       ML model    physics baseline (t <= 365 -> "yes")
+    ROC AUC             0.983       -
+    Average precision   0.941       -
+    Brier score         0.031       -
+    Precision           0.912       0.760
+    Recall              0.824       0.719
+    F1                  0.866       0.739
+  (threshold 0.5; metrics weighted by the sampling weights in 2.3)
+
+  Models 2-4 - days until re-entry (258,833 test rows, 2,148 objects that
+  re-entered within a year)
+
+    Actual time left  ML median error  Physics median error  ML mean error  80% window hit rate
+    all (<= 365 d)        20.3 d            45.7 d              32.6 d           79.8 %
+    0-7 days               0.6 d             0.8 d               5.1 d           82.2 %
+    8-30 days              2.6 d             3.8 d               8.0 d           77.5 %
+    31-90 days            10.1 d            15.6 d              22.3 d           74.7 %
+    91-180 days           28.8 d            47.5 d              39.8 d           75.1 %
+    181-365 days          34.6 d           115.0 d              42.8 d           84.5 %
+
+  Metric definitions
+    error = |predicted days - actual days|; median and mean taken over rows.
+    80% window hit rate = share of rows whose actual re-entry fell between
+                          the window's lower and upper bounds.
+    ROC AUC = chance a random re-entering row scores higher than a random
+              surviving row.
+    Precision = TP/(TP+FP), Recall = TP/(TP+FN), F1 = 2PR/(P+R).
+    Brier = mean of (predicted probability - outcome)^2.
+
+  What drives the forecast (permutation importance of the median model on
+  20,000 test rows: how much the error grows when one input is shuffled)
+    ndot (decay rate)      0.793
+    physics_days           0.185
+    mean_motion            0.184
+    f107_last81            0.028
+    apogee_km              0.027
+    f107_obs               0.018
+    age_days               0.017
+    object_type            0.017
+    inclination            0.016
+    is_starlink            0.012
+    (all others < 0.01)
+
+
+2.9 HOW THE LIVE APP USES THE MODELS
+------------------------------------
+  On startup and every 6 hours, ml-service:
+    1. downloads the live catalogue from the backend (/api/satellites);
+    2. scores every object with mean motion >= 11.25 rev/day and
+       perigee <= 700 km (about 13,500 objects). Objects above 700 km get
+       "out of range", since drag is too weak for re-entry within the
+       horizon and the training data has no such orbits;
+    3. refreshes the SATCAT and solar flux from CelesTrak and scores again.
+       A bundled SATCAT snapshot (models/satcat_snapshot.csv.gz) and the
+       last training-time flux are used until, or if, the download
+       succeeds.
+
+  For each object:
+    P = classifier probability
+    if P >= 0.5: "likely within a year"; show the best guess, the 80%
+                 window, and dates (TLE epoch + days)
+    else:        "not expected to re-enter within the next 12 months"
+
+  Station-kept satellites (a rule, not learned by the model)
+    Some satellites hold their altitude with thrusters, and the training
+    labels can't reflect recent changes (e.g. Starlink lowering much of
+    its constellation in 2026, after the last date for which one-year
+    survival is known). An object is marked stationKept if:
+      it is the ISS (25544) or Tiangong/Tianhe (48274), OR
+      SATCAT status is operational ("+") AND the name contains STARLINK,
+      ONEWEB or KUIPER AND perigee >= 340 km.
+    Its forecast is still shown, with a note that it assumes the
+    satellite stops manoeuvring, and it is left off the watch list.
+    (340 km because Starlink runs a ~350-360 km shell; de-orbiting
+    Starlinks drop below that well before re-entry.)
+
+  Serving settings (found during load testing, see EXPERIMENTS_7_8.txt)
+    OMP_NUM_THREADS=1   one thread per model call. Letting every prediction
+                        use all host CPUs oversubscribed them and caused
+                        timeouts under load.
+    WEB_CONCURRENCY=N   number of worker processes; one worker handles
+                        ~15-18 predictions/s (each costs ~35 ms of CPU).
+    Whole-catalogue re-scoring runs on a background thread, so requests
+    are still served while it runs.
+
+  Sanity checks on the live catalogue (2026-10-11)
+    ISS              P = 0.02  -> not within a year (station-kept)
+    Hubble           P = 0.00  -> not within a year
+    Tiangong         P = 0.98  -> about 187 days if it stopped reboosting
+                                  (station-kept)
+    Watch list       14 objects within 7 days, 75 within 30 days
+
+
+2.10 KNOWN LIMITATIONS
+----------------------
+  - Statistical estimate of passive decay. It can't know about future
+    manoeuvres, reboosts or controlled de-orbits.
+  - The station-kept rule is hand-written and covers only the listed
+    constellations and stations.
+  - Only perigees up to 700 km are in scope.
+  - Uses today's solar flux; a solar storm after the forecast speeds up
+    decay.
+  - Forecasts are based on the latest TLE, so they shift as new TLEs
+    arrive every few hours.
+
+
+=====================================================================
+FEATURE 3 - SPACECRAFT HEALTH (telemetry anomaly detection)
+=====================================================================
+
+Where: header button "Spacecraft Health" -> dashboard.
+Code:  ml-service/training/train_anomaly.py (training + evaluation),
+       ml-service/app/telemetry.py (serving),
+       frontend/src/components/HealthDashboard.tsx, TelemetryChart.tsx
+
+Question answered: "Is this spacecraft telemetry behaving abnormally right
+now?" - an alert, not a forecast of failures days ahead (there are too few
+labelled failures in public data for that).
+
+
+3.1 DATA
+--------
+  NASA SMAP & MSL telemetry anomaly dataset (Hundman et al., KDD 2018) -
+  real telemetry from NASA's SMAP Earth satellite and the Curiosity Mars
+  rover, with anomalies labelled by NASA/JPL engineers.
+    82 channels (55 SMAP, 27 MSL), 105 labelled anomaly sequences,
+    517,764 test values (each channel has its own train and test split).
+    Each row: column 0 = the telemetry value (normalised to about -1..1),
+    other columns = which commands were sent to the spacecraft at that step.
+    Timestamps and channel names are anonymised by NASA.
+  Source: the original JPL download is closed, so the files come from a
+  Hugging Face mirror (appleparan/telemanom). They are checked against
+  JPL's official label file on GitHub: every channel's test length must
+  match. Channel P-2 appears twice in that label file; both rows are kept
+  (shown as "P-2" and "P-2 #2"), as the benchmark's 105 count does.
+
+
+3.2 METHOD (per channel)
+------------------------
+  1. Forecaster: HistGradientBoostingRegressor (200 trees, learning rate
+     0.1, 31 leaves) predicts the next value y_t from data before t:
+       - the previous 30 values (lags 1..30);
+       - rolling mean, std, min and max over the last 250 values;
+       - the last change (y_{t-1} - y_{t-2});
+       - commands sent now, and how many of each in the last 50 steps.
+     Trained only on the channel's training split (nominal behaviour).
+  2. Error: e_t = |y_t - y_hat_t| on the test split, smoothed with an
+     exponentially weighted moving average (span 105, Telemanom's value):
+       e_s = EWMA(e, span = 105)
+  3. Alert threshold (Telemanom's nonparametric dynamic threshold; no
+     labels are used). For z = 2.5, 3.0, ... 11.5:
+       eps = mean(e_s) + z * std(e_s)
+       above = steps with e_s >= eps, each widened by +/-100 steps,
+               grouped into sequences
+       score = [ (mean - mean(e_s below eps)) / mean
+               + (std  - std(e_s below eps))  / std ]
+               / (number_of_sequences^2 + number_of_steps_above)
+     The highest-scoring eps wins, rejecting any z that flags more than 5
+     sequences or more than half the data. A channel whose errors are
+     negligible relative to the signal gets no threshold (no alerts).
+  4. Pruning: sort the sequences' peak errors, plus the largest
+     non-flagged error, in descending order. Drop sequences whose peak
+     isn't at least 13% above the next one (p = 0.13).
+
+  Scoring (the benchmark's rule): a labelled anomaly counts as detected
+  if any alert overlaps it; an alert overlapping no labelled anomaly is a
+  false alarm. Precision = detected / (detected + false alarms);
+  recall = detected / 105.
+
+  Baseline: out-of-limits checking, the classic operations method. Alert
+  when a value leaves its training min-max range by more than 5% of that
+  range.
+
+
+3.3 RESULTS
+-----------
+                          caught          recall  precision  false alarms
+  OrbitView model  SMAP   22 / 69         31.9%     78.6%         6
+                   MSL    14 / 36         38.9%     87.5%         2
+                   total  36 / 105        34.3%     81.8%         8
+  Out-of-limits    total  47 / 105        44.8%     40.2%        70
+  NASA/JPL Telemanom (LSTM, published)    80.0%     87.5%         -
+                   (SMAP 85.5% / 85.5%, MSL 69.4% / 92.6%)
+
+  Median detection delay of the model: 0 steps after the anomaly starts.
+
+  NASA's own detector performs better. Telemanom (Hundman et al., KDD
+  2018, LSTM prediction + the same thresholding) catches 80% of the
+  anomalies at 87.5% precision, against our 34% at 82%. Our model is far
+  more precise than out-of-limits checks (8 false alarms vs 70), but
+  catches only about a third of the anomalies. Likely reasons: the
+  1-step-ahead tree model quickly adapts to a new level, so the error is
+  high only at the onset of long anomalies; and one threshold is chosen
+  for each whole test series, where Telemanom works in windows.
+
+
+3.4 DASHBOARD
+-------------
+  - Score tiles: anomalies caught, alert precision, the out-of-limits
+    baseline, and NASA Telemanom's published scores (marked "performs
+    better").
+  - Channel list with filters: SMAP / MSL / missed / false alarms.
+  - Per channel:
+      * chart 1: measured value vs model prediction;
+      * chart 2: smoothed error vs the alert threshold;
+      * both shade NASA-labelled anomalies (grey) and model alerts (red);
+        out-of-limits alerts are optional (amber).
+  - Replay at 100 / 500 / 2,000 steps per second draws the data as if it
+    were arriving live. An event log lists each alert as it fires, with
+    its verdict (matches a labelled anomaly / false alarm), and whether
+    each labelled anomaly was caught or missed.
+  - Charts are reduced to ~1,200 points per channel, keeping each
+    bucket's min and max so spikes stay visible.
+
+
+=====================================================================
+APPENDIX A - FILES
+=====================================================================
+  ml-service/app/features.py          TLE parsing, orbit formulas, model inputs
+  ml-service/app/reentry.py           scoring, intervals, station-kept rule
+  ml-service/app/assistant.py         Groq tool-calling assistant
+  ml-service/app/main.py              FastAPI endpoints and refresh loop
+  ml-service/training/download_history.py  fetches TLE history (DuckDB)
+  ml-service/training/build_dataset.py     labels, sampling, SATCAT snapshot
+  ml-service/training/train.py             training, calibration, evaluation
+  ml-service/training/sanity_check.py      checks on well-known satellites
+  ml-service/models/reentry.joblib    trained models (all four + margin)
+  ml-service/models/metrics.json      every number in section 2.8
+  ml-service/app/telemetry.py         telemetry dashboard API (Feature 3)
+  ml-service/training/download_smap_msl.py  fetches + verifies NASA SMAP/MSL
+  ml-service/training/train_anomaly.py      anomaly models, thresholds, scoring
+  ml-service/models/health/           anomaly results + metrics (Feature 3)
+  frontend/src/components/AssistantPanel.tsx, ReentryWatch.tsx,
+  ReentryForecastSection.tsx, HealthDashboard.tsx,
+  TelemetryChart.tsx                  user interface
+
+
+=====================================================================
+APPENDIX B - OTHER CALCULATIONS IN THE APP (not AI, for reference)
+=====================================================================
+  Satellite positions  SGP4 propagation of each TLE (satellite.js in the
+                       browser, SGP4 in the .NET backend), converted to
+                       latitude/longitude/altitude using Greenwich sidereal
+                       time.
+  Passes               Step through time (30 s) and compute the satellite's
+                       elevation from the observer; a pass is a run where
+                       elevation > 0 deg; reports start, peak and end.
+  Visibility score     Hand-written rule:
+                         score = min(1, 0.85 * min(1, max_elevation / 60) + bonus)
+                         bonus = 0.25 if the local hour is <= 5 or >= 19,
+                                 0.15 if it is <= 7 or >= 17, else 0
+  Globe day/night      Sun direction from the standard low-precision solar
+                       formula (days since J2000, mean anomaly, ecliptic
+                       longitude, obliquity), rotated into Earth-fixed
+                       coordinates by Greenwich sidereal time.
+  Globe sizing         Camera distance d chosen so the globe fills 72% of
+                       the free screen area:
+                         d = sqrt(1 + (1 / (f * tan(fov/2)))^2)
+                       where f = 0.72 * min(height, width - side panel) / height

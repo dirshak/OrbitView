@@ -1,0 +1,31 @@
+# Recovery: delete one ml-service pod while requests keep flowing
+$ kubectl -n orbitview get pods -l component=ml-service   (before)
+NAME                          READY   STATUS    RESTARTS   AGE
+ml-service-74d9db74cd-4p5lz   1/1     Running   0          41s
+ml-service-74d9db74cd-8sjbq   1/1     Running   0          99s
+ml-service-74d9db74cd-rz6jv   1/1     Running   0          41s
+$ kubectl -n orbitview delete pod ml-service-74d9db74cd-4p5lz --wait=false
+pod "ml-service-74d9db74cd-4p5lz" deleted
+$ kubectl -n orbitview get pods -l component=ml-service   (1 s after delete)
+NAME                          READY   STATUS              RESTARTS   AGE
+ml-service-74d9db74cd-4p5lz   0/1     Terminating         0          43s
+ml-service-74d9db74cd-7ptmd   0/1     ContainerCreating   0          1s
+ml-service-74d9db74cd-8sjbq   1/1     Running             0          101s
+ml-service-74d9db74cd-rz6jv   1/1     Running             0          43s
+Replacement pod Ready after 11.2 s
+$ kubectl -n orbitview get pods -l component=ml-service   (after)
+NAME                          READY   STATUS    RESTARTS   AGE
+ml-service-74d9db74cd-7ptmd   1/1     Running   0          11s
+ml-service-74d9db74cd-8sjbq   1/1     Running   0          111s
+ml-service-74d9db74cd-rz6jv   1/1     Running   0          53s
+Requests during recovery test (40 s): 446 OK, 0 failed
+
+$ kubectl -n orbitview get events --sort-by=.lastTimestamp | grep ml-service (last 8)
+32s         Normal    SuccessfulCreate    replicaset/ml-service-74d9db74cd   Created pod: ml-service-74d9db74cd-7ptmd
+32s         Normal    Pulling             pod/ml-service-74d9db74cd-7ptmd    Pulling image "dirshak/orbitview-ml-service:1.0.1"
+32s         Normal    Scheduled           pod/ml-service-74d9db74cd-7ptmd    Successfully assigned orbitview/ml-service-74d9db74cd-7ptmd to docker-desktop
+32s         Normal    Killing             pod/ml-service-74d9db74cd-4p5lz    Stopping container ml-service
+30s         Normal    Started             pod/ml-service-74d9db74cd-7ptmd    Started container ml-service
+30s         Normal    Created             pod/ml-service-74d9db74cd-7ptmd    Created container ml-service
+30s         Normal    Pulled              pod/ml-service-74d9db74cd-7ptmd    Successfully pulled image "dirshak/orbitview-ml-service:1.0.1" in 1.556s (1.556s including waiting). Image size: 147473149 bytes.
+27s         Warning   Unhealthy           pod/ml-service-74d9db74cd-7ptmd    Readiness probe failed: Get "http://10.1.0.13:8000/ml/health": dial tcp 10.1.0.13:8000: connect: connection refused

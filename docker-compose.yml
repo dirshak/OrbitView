@@ -57,12 +57,33 @@ services:
     ports:
       - "5080:8080"
 
+  # Re-entry forecasting models + Groq-powered assistant (Python / FastAPI).
+  ml-service:
+    build:
+      context: ./ml-service
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BACKEND_URL: http://backend:8080
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+      # One OpenMP thread per model call: requests already run concurrently, and
+      # per-call threading across all host cores caused severe oversubscription
+      # (see experiments/finops). Override for batch-heavy use.
+      OMP_NUM_THREADS: ${ML_OMP_THREADS:-1}
+    depends_on:
+      - backend
+    ports:
+      - "5090:8000"
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     depends_on:
       - backend
+      - ml-service
     ports:
       - "8080:80"
 

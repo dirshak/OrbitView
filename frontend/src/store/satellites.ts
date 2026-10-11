@@ -15,6 +15,10 @@ interface UiState {
   showOrbitTrail: boolean;
   showLabels: boolean;
   userLocation: UserLocation | null;
+  autoRotate: boolean;
+  panMode: boolean;
+  /** Bumped to ask the globe to restore its default camera/rotation. */
+  viewResetToken: number;
 
   selectSatellite: (id: number | null) => void;
   setQuery: (q: string) => void;
@@ -23,6 +27,9 @@ interface UiState {
   setShowOrbitTrail: (v: boolean) => void;
   setShowLabels: (v: boolean) => void;
   setUserLocation: (l: UserLocation | null) => void;
+  setAutoRotate: (v: boolean) => void;
+  setPanMode: (v: boolean) => void;
+  resetView: () => void;
 }
 
 const FAVORITES_KEY = "astrotrack:favorites:v1";
@@ -73,6 +80,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   showOrbitTrail: true,
   showLabels: true,
   userLocation: loadLocation(),
+  autoRotate: true,
+  panMode: false,
+  viewResetToken: 0,
 
   selectSatellite: (id) => set({ selectedNoradId: id }),
   setQuery: (q) => set({ query: q }),
@@ -105,4 +115,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     persistLocation(l);
     set({ userLocation: l });
   },
+
+  setAutoRotate: (v) => set({ autoRotate: v }),
+  setPanMode: (v) => set({ panMode: v }),
+  resetView: () => set((s) => ({ panMode: false, viewResetToken: s.viewResetToken + 1 })),
 }));

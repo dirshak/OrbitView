@@ -1,0 +1,152 @@
+{
+  "trained_at": "2026-10-11T09:24:10+00:00",
+  "data": {
+    "source": "Space-Track TLE history (Hugging Face mirror), CelesTrak SATCAT decay dates, CelesTrak F10.7",
+    "history_from": "2019-01-01",
+    "history_to": "2026-10-09",
+    "rows": 1874484,
+    "objects": 23933,
+    "reentered_objects": 10704,
+    "split": "80/20 by launch (GroupShuffleSplit on international designator)"
+  },
+  "classifier": {
+    "test_rows": 420784,
+    "test_positive_rate": 0.15693109562598387,
+    "roc_auc": 0.9828582309080712,
+    "average_precision": 0.9407537123624106,
+    "brier": 0.030604559507317962,
+    "precision": 0.9124713281838887,
+    "recall": 0.8241747622568578,
+    "f1": 0.8660784072375911,
+    "baseline_physics": {
+      "precision": 0.7604324793209207,
+      "recall": 0.7187859176995103,
+      "f1": 0.7390229307561166
+    }
+  },
+  "regression": {
+    "overall": {
+      "rows": 258833,
+      "objects": 2148,
+      "mae_days": 32.568285028073014,
+      "median_abs_error_days": 20.324790322421904,
+      "baseline_mae_days": 551.8927018890479,
+      "baseline_median_abs_error_days": 45.65712603885842,
+      "interval_coverage": 0.7980280721546326
+    },
+    "0-7d": {
+      "rows": 11143,
+      "objects": 1703,
+      "mae_days": 5.080514123948533,
+      "median_abs_error_days": 0.6030322779501631,
+      "baseline_mae_days": 71.4540488341321,
+      "baseline_median_abs_error_days": 0.7527153411359255,
+      "interval_coverage": 0.8215920308713991
+    },
+    "8-30d": {
+      "rows": 35614,
+      "objects": 1878,
+      "mae_days": 7.986220223679865,
+      "median_abs_error_days": 2.5768634075118886,
+      "baseline_mae_days": 81.08403968459999,
+      "baseline_median_abs_error_days": 3.7744738801798867,
+      "interval_coverage": 0.7750042118268097
+    },
+    "31-90d": {
+      "rows": 39677,
+      "objects": 1851,
+      "mae_days": 22.340281644488808,
+      "median_abs_error_days": 10.051901899715332,
+      "baseline_mae_days": 236.72862737600826,
+      "baseline_median_abs_error_days": 15.614670199849016,
+      "interval_coverage": 0.7465030118204501
+    },
+    "91-180d": {
+      "rows": 58184,
+      "objects": 1809,
+      "mae_days": 39.84259712222977,
+      "median_abs_error_days": 28.818513658449987,
+      "baseline_mae_days": 546.4718105627801,
+      "baseline_median_abs_error_days": 47.518652321243,
+      "interval_coverage": 0.7506187267977451
+    },
+    "181-365d": {
+      "rows": 114215,
+      "objects": 1785,
+      "mae_days": 42.762478457065455,
+      "median_abs_error_days": 34.5788985818057,
+      "baseline_mae_days": 857.8164573688147,
+      "baseline_median_abs_error_days": 115.04169407796047,
+      "interval_coverage": 0.8449590684235871
+    }
+  },
+  "interval": {
+    "nominal": 0.8,
+    "coverage_before_calibration": 0.7491200890149247,
+    "coverage_after_calibration": 0.7980280721546326,
+    "conformal_margin_log_days": 0.02688942154589051
+  },
+  "feature_importance": [
+    {
+      "feature": "ndot",
+      "importance": 0.7930900393322983
+    },
+    {
+      "feature": "physics_days",
+      "importance": 0.18547831277858037
+    },
+    {
+      "feature": "mean_motion",
+      "importance": 0.1840172330192191
+    },
+    {
+      "feature": "f107_last81",
+      "importance": 0.02795523289409892
+    },
+    {
+      "feature": "apogee_km",
+      "importance": 0.02661557461210018
+    },
+    {
+      "feature": "f107_obs",
+      "importance": 0.018445625435819107
+    },
+    {
+      "feature": "age_days",
+      "importance": 0.0167063030861521
+    },
+    {
+      "feature": "object_type",
+      "importance": 0.016514901918429747
+    },
+    {
+      "feature": "inclination",
+      "importance": 0.015864153267359866
+    },
+    {
+      "feature": "is_starlink",
+      "importance": 0.011540374085838115
+    },
+    {
+      "feature": "perigee_km",
+      "importance": 0.009739404042602798
+    },
+    {
+      "feature": "eccentricity",
+      "importance": 0.006274198464433445
+    },
+    {
+      "feature": "bstar",
+      "importance": 0.005366309970649945
+    },
+    {
+      "feature": "ndot_over_n",
+      "importance": 0.0022916216089429544
+    },
+    {
+      "feature": "rcs_m2",
+      "importance": 0.0012593886329335853
+    }
+  ],
+  "sklearn_version": "1.9.1"
+}

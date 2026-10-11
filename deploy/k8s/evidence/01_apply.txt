@@ -1,0 +1,10 @@
+$ kubectl apply -f deploy/k8s/orbitview.yaml
+namespace/orbitview created
+deployment.apps/postgres created
+service/postgres created
+deployment.apps/backend created
+service/backend created
+deployment.apps/ml-service created
+service/ml-service created
+deployment.apps/frontend created
+service/frontend created

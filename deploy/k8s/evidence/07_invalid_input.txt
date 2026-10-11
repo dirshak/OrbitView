@@ -1,0 +1,11 @@
+# Invalid-input and failure scenarios (through the Kubernetes frontend service, http://localhost:8090)
+$ POST /ml/reentry/predict with a malformed (too short) TLE
+  -> HTTP 422: {"detail":[{"type":"string_too_short","loc":["body","satellites",0,"tleLine1"],"msg":"String should have at least 69 characters","input":"1 25544U garbage","ctx":{"min_length":69}}...
+$ POST /ml/reentry/predict with an empty list
+  -> HTTP 422: {"detail":[{"type":"too_short","loc":["body","satellites"],"msg":"List should have at least 1 item after validation, not 0","input":[],"ctx":{"field_type":"List","min_length":1,"ac...
+$ GET /ml/reentry/99999999 (unknown satellite)
+  -> HTTP 404: {"detail":"Satellite not in the live catalogue"}
+$ GET /ml/telemetry/channels/NOPE (unknown channel)
+  -> HTTP 404: {"detail":"Unknown telemetry channel"}
+$ GET /ml/reentry/20580 (Hubble, valid)
+  -> HTTP 200: {"noradId":20580,"name":"HST","eligible":true,"perigeeKm":469.0,"apogeeKm":471.3,"probabilityWithinYear":0.0,"likelyWithinYear":false,"stationKept":false,"tleEpoch":"2026-10-10T22:...

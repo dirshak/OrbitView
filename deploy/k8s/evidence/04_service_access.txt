@@ -1,0 +1,9 @@
+# Service access through the LoadBalancer service (http://localhost:8090)
+$ curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/
+200
+$ curl -s http://localhost:8090/ml/health
+{"status":"ok","catalogSize":15942,"scoredObjects":13501,"scoredAt":"2026-10-11T12:34:38.475332Z","assistantConfigured":true,"assistantModel":"openai/gpt-oss-120b"}
+$ curl -s http://localhost:8090/api/satellites/25544/position
+{"noradId":25544,"timestamp":"2026-10-11T12:34:40.5219832+00:00","latitudeDeg":30.437138828329278,"longitudeDeg":28.03387599083038,"altitudeKm":423.27219506174515,"velocityKmS":7.660679926428897}
+$ curl -s -X POST http://localhost:8090/ml/reentry/predict  (one TLE)
+{"count":1,"results":[{"noradId":25544,"name":"ISS (ZARYA)","eligible":true,"perigeeKm":415.6,"apogeeKm":424.8,"probabilityWithinYear":0.019,"likelyWithinYear":false,"stationKept":true,"tleEpoch":"2026-10-10T18:56:31.282080+00:00"}]}
